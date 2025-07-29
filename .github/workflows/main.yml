@@ -13,13 +13,6 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v3
 
-    - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
-          coverage: none
-    
     - name: Install Composer Dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
