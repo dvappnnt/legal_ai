@@ -13,16 +13,6 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v3
 
-    - name: Install Composer Dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-
-    - name: Install NPM Dependencies
-        run: npm install
-    - name: Build Frontend Assets
-        run: npm run build
-        env:
-          VITE_APP_URL: https://ordinance.nnterp.com
-    
     - name: Deploy to Main Server via SSH
       uses: appleboy/ssh-action@master
       with:
@@ -32,32 +22,8 @@ jobs:
         port: ${{ secrets.SSH_PORT }}
         script: |
           cd /home/nnterp.com/ordinance
-          git config --global --add safe.directory /home/nnterp.com/ordinance
           git reset --hard
           git clean -fd
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git pull https://${{ secrets.GIT_TOKEN }}@github.com/dvappnnt/legal_ai.git main
-
-          rm -rf node_modules package-lock.json
-          composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-          npm install
-          npm run build
-
-          php artisan down
-          echo "Application in maintenance mode: Deploying new version..."
-          
-          php artisan migrate --force
-          php artisan config:cache
-          php artisan route:cache
-          php artisan view:cache
-
-          php artisan cache:clear
-          php artisan config:clear
-          php artisan view:clear
-
-          chmod -R 775 storage bootstrap/cache
-          chown -R daemon:daemon storage bootstrap/cache
-          chmod -R 777 /home/nnterp.com/ordinance/storage /home/nnterp.com/ordinance/bootstrap/cache
-          php artisan up
-          echo "Deployment completed successfully"
