@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 
-import NoNotifImage from '../assets/NoNotif.png';
+// import NoNotifImage from '../assets/NoNotif.png';
+const NoNotifImage = '/assets/NoNotif.png';
 
 function NotificationPage() {
     const navigate = useNavigate();
