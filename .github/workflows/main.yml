@@ -1,0 +1,30 @@
+name: Deploy to Main Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Deploy to Main Server via SSH
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: ${{ secrets.SSH_PORT }}
+        script: |
+          cd /home/nnterp.com/ordinance
+          git config --global --add safe.directory /home/nnterp.com/ordinance
+          git reset --hard
+          git clean -fd
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git pull https://${{ secrets.GIT_TOKEN }}@github.com/dvappnnt/legal_ai.git main
