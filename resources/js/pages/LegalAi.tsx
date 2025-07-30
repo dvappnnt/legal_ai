@@ -115,7 +115,7 @@ export default function LegalAiChat() {
   };
 
   return (
-    <div className="h-full flex items-center justify-center bg-gray-100">
+    <div className="flex items-center justify-center bg-gray-100" style={{height: '93vh'}}>
       <div className="flex flex-col bg-white w-full max-w-2xl h-full">
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((msg, index) => (
