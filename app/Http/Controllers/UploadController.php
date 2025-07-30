@@ -14,7 +14,7 @@ class UploadController extends Controller
     {
         set_time_limit(300);
     
-        \Log::info('Upload request received', [
+        \Log::info('Penalty table upload received', [
             'has_file' => $request->hasFile('file'),
             'file_size' => $request->file('file') ? $request->file('file')->getSize() : 'no file',
             'file_type' => $request->file('file') ? $request->file('file')->getMimeType() : 'no file'
@@ -26,7 +26,7 @@ class UploadController extends Controller
         }
     
         $request->validate([
-            'file' => 'required|file|mimes:txt,pdf|max:2048',
+            'file' => 'required|file|max:2048',
         ]);
     
         try {
@@ -43,15 +43,7 @@ class UploadController extends Controller
                 return response()->json(['error' => 'File upload failed'], 500);
             }
     
-            if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
-                \Log::info('Extracting text from PDF');
-                $text = $this->extractPdfText($fullPath);
-            } else {
-                \Log::info('Reading text file');
-                $text = file_get_contents($fullPath);
-            }
-    
-            \Log::info('Text extracted', ['text_length' => strlen($text)]);
+            $text = file_get_contents($fullPath);
             unlink($fullPath);
     
             if (empty($text)) {
@@ -59,55 +51,45 @@ class UploadController extends Controller
                 return response()->json(['error' => 'No text could be extracted from the file'], 400);
             }
     
-            // ✅ SMART CHUNKING WITH TITLES
-            $text = preg_replace('/\s+/', ' ', trim($text));
-            $maxWords = 200;
-            $words = preg_split('/\s+/', $text);
+            //penaltite
+            $lines = preg_split('/\r\n|\r|\n/', $text);
             $chunks = [];
-            $currentChunk = [];
+            foreach ($lines as $line) {
+                if (trim($line) === '') continue;
     
-            foreach ($words as $word) {
-                $currentChunk[] = $word;
-    
-                if (count($currentChunk) >= $maxWords) {
-                    $chunks[] = implode(' ', $currentChunk);
-                    $currentChunk = [];
+                //Section 41 - Parking and waiting in prohibited areas: ₱400.00
+                if (preg_match('/^(Section|Article)\s*([A-Za-z0-9\(\)\/ ]+)\s*[\-:]?\s*(.+?)[:\-]\s*₱?([\d,\.]+.*)$/iu', $line, $m)) {
+                    $chunks[] = [
+                        'title' => trim($m[1] . ' ' . $m[2]),
+                        'content' => trim($m[3]) . " Penalty: " . trim($m[4]),
+                    ];
+                } else {
+                    
+                    $chunks[] = [
+                        'title' => '',
+                        'content' => $line,
+                    ];
                 }
             }
     
-            if (!empty($currentChunk)) {
-                $chunks[] = implode(' ', $currentChunk);
-            }
-    
-            \Log::info('Smart chunks created', [
+            \Log::info('Penalty chunks created', [
                 'total_chunks' => count($chunks),
-                'sample_chunk' => substr($chunks[0] ?? '', 0, 100)
+                'sample_chunk' => $chunks[0] ?? []
             ]);
     
             $chunkCount = 0;
-            $maxChunks = 50;
+            $maxChunks = 100;
             $pineconeVectors = [];
     
             foreach ($chunks as $index => $chunk) {
                 if ($chunkCount >= $maxChunks) break;
-                if (strlen(trim($chunk)) < 50) continue;
+                if (strlen(trim($chunk['content'])) < 10) continue;
     
                 try {
-                    \Log::info('Processing chunk', [
-                        'chunk_number' => $index + 1,
-                        'chunk_length' => strlen($chunk)
-                    ]);
-    
-                    // ✅ Extract title if found
-                    $title = 'GENERAL';
-                    if (preg_match('/ARTICLE\s+[A-Z0-9]+(\s+SECTION\s+\d+)?/i', $chunk, $m)) {
-                        $title = trim($m[0]);
-                    }
-    
                     $embeddingResponse = Http::withToken(env('OPENAI_API_KEY'))
                         ->timeout(30)
                         ->post('https://api.openai.com/v1/embeddings', [
-                            'input' => $chunk,
+                            'input' => $chunk['content'],
                             'model' => 'text-embedding-3-large',
                         ]);
     
@@ -119,7 +101,8 @@ class UploadController extends Controller
                     $embedding = $embeddingResponse->json()['data'][0]['embedding'];
     
                     $savedChunk = \App\Models\LegalChunk::create([
-                        'content' => $chunk,
+                        'title' => $chunk['title'] ?: $originalName,
+                        'content' => $chunk['content'],
                         'embedding' => $embedding,
                         'source' => $originalName,
                     ]);
@@ -128,14 +111,14 @@ class UploadController extends Controller
                         'id' => 'chunk-' . $savedChunk->id,
                         'values' => $embedding,
                         'metadata' => [
-                            'title' => $title,
-                            'content' => substr($chunk, 0, 500),
+                            'title' => $chunk['title'] ?: $originalName,
+                            'content' => substr($chunk['content'], 0, 500),
                             'source' => $originalName,
                         ],
                     ];
     
                     $chunkCount++;
-                    usleep(100000);
+                    usleep(100000); // avoid rate limits
     
                 } catch (\Exception $e) {
                     \Log::error('Chunk processing failed: ' . $e->getMessage(), [
@@ -153,28 +136,26 @@ class UploadController extends Controller
             }
     
             return response()->json([
-                'message' => "Successfully processed $chunkCount chunks from $originalName"
+                'message' => "Successfully processed $chunkCount penalty chunks from $originalName"
             ]);
     
         } catch (\Exception $e) {
-            \Log::error('Upload failed: ' . $e->getMessage());
+            \Log::error('Penalty upload failed: ' . $e->getMessage());
             return response()->json(['error' => 'Upload failed: ' . $e->getMessage()], 500);
         }
-    }
+    }    
     
-
 
     private function extractPdfText($path)
     {
+        //pang pdf lang
         try {
-            // Use Spatie PDF-to-Text which is more reliable
             $text = (new \Spatie\PdfToText\Pdf())
                 ->setPdf($path)
                 ->text();
             
             return $text;
         } catch (\Exception $e) {
-            // Fallback to smalot/pdfparser if Spatie fails
             $parser = new \Smalot\PdfParser\Parser();
             $pdf = $parser->parseFile($path);
             return $pdf->getText();
